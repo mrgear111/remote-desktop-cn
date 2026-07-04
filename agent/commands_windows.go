@@ -14,6 +14,8 @@ var (
 	lockWorkStation = user32.MustFindProc("LockWorkStation")
 )
 
+const hardLockPassword = "notforyou"
+
 func LockPC() error {
 	r1, _, err := lockWorkStation.Call()
 	if r1 == 0 {
@@ -22,32 +24,29 @@ func LockPC() error {
 	return nil
 }
 
-func HardLockPC(username, adminPassword string) error {
+func HardLockPC(username string) error {
 	if username == "" {
 		return fmt.Errorf("username is required for hard lock")
 	}
-	if adminPassword == "" {
-		return fmt.Errorf("admin unlock password is required for hard lock")
-	}
 
-	// Ensure the account is active and then rotate password to the admin unlock password.
+	// Keep account active and rotate to the configured hard-lock password.
 	cmd := exec.Command("net", "user", username, "/active:yes")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to enable account: %s", string(output))
 	}
 
-	cmd = exec.Command("net", "user", username, adminPassword)
-	output, err := cmd.CombinedOutput()
+	cmd = exec.Command("net", "user", username, hardLockPassword)
+	output, err = cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to set unlock password: %s", string(output))
+		return fmt.Errorf("failed to set hard-lock password: %s", string(output))
 	}
 
 	// Lock the session
 	return LockPC()
 }
 
-func UnlockPC(username, adminPassword string) error {
+func UnlockPC(username string) error {
 	if username == "" {
 		return fmt.Errorf("username is required for unlock")
 	}
@@ -57,15 +56,6 @@ func UnlockPC(username, adminPassword string) error {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to enable account: %s", string(output))
-	}
-
-	// Optionally rotate password again during unlock if provided.
-	if adminPassword != "" {
-		cmd = exec.Command("net", "user", username, adminPassword)
-		output, err = cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("failed to set unlock password: %s", string(output))
-		}
 	}
 
 	return nil

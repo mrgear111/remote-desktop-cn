@@ -11,16 +11,16 @@ import (
 	"syscall"
 )
 
-var serverURL = flag.String("server", "localhost:3000", "Server address")
+var serverURL = flag.String("server", "remote-desktop-cn.onrender.com", "Server address")
 
 func main() {
 	flag.Parse()
 	log.SetFlags(0)
 
 	log.Println("Running in standard console mode (Mac/Linux).")
-	
+
 	stopChan := make(chan struct{})
-	
+
 	// Handle graceful shutdown via Ctrl+C
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)

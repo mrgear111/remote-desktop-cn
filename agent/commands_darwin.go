@@ -12,12 +12,12 @@ func LockPC() error {
 	return nil
 }
 
-func HardLockPC(username, adminPassword string) error {
-	log.Printf("[MOCK] Hard Locking PC for user %s with admin password flow (Not implemented natively on this OS)", username)
+func HardLockPC(username string) error {
+	log.Printf("[MOCK] Hard Locking PC for user %s (Not implemented natively on this OS)", username)
 	return nil
 }
 
-func UnlockPC(username, adminPassword string) error {
-	log.Printf("[MOCK] Unlocking PC for user %s with admin password flow (Not implemented natively on this OS)", username)
+func UnlockPC(username string) error {
+	log.Printf("[MOCK] Unlocking PC for user %s (Not implemented natively on this OS)", username)
 	return nil
 }

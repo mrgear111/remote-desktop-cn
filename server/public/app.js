@@ -7,7 +7,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnHardLock = document.getElementById('btn-hard-lock');
     const btnUnlock = document.getElementById('btn-unlock');
     const targetUser = document.getElementById('target-user');
-    const adminPassword = document.getElementById('admin-password');
     const actionResult = document.getElementById('action-result');
 
     // Connect to WebSocket server
@@ -86,20 +85,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function sendCommand(action) {
         const username = targetUser.value.trim();
-        const unlockPassword = adminPassword.value;
-
-        if ((action === 'HARD_LOCK' || action === 'UNLOCK') && !unlockPassword) {
-            actionResult.textContent = 'Admin unlock password is required for this action';
-            actionResult.className = 'result-msg error';
-            return;
-        }
 
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
                 type: 'command',
                 action: action,
-                username,
-                adminPassword: unlockPassword
+                username
             }));
             actionResult.textContent = `Sending ${action} command...`;
             actionResult.className = 'result-msg';

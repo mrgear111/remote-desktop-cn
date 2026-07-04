@@ -3,17 +3,18 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"net"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
 
 type CommandMsg struct {
-	Type          string `json:"type"`
-	Action        string `json:"action"`
-	Username      string `json:"username"`
-	AdminPassword string `json:"adminPassword"`
+	Type     string `json:"type"`
+	Action   string `json:"action"`
+	Username string `json:"username"`
 }
 
 type CommandResultMsg struct {
@@ -23,9 +24,56 @@ type CommandResultMsg struct {
 	Message string `json:"message"`
 }
 
+func buildAgentWebSocketURL(serverAddr string) string {
+	trimmed := strings.TrimSpace(serverAddr)
+
+	// Allow passing full URLs like https://host or ws://host.
+	if strings.Contains(trimmed, "://") {
+		parsed, err := url.Parse(trimmed)
+		if err == nil {
+			switch parsed.Scheme {
+			case "http":
+				parsed.Scheme = "ws"
+			case "https":
+				parsed.Scheme = "wss"
+			case "ws", "wss":
+				// keep as-is
+			default:
+				parsed.Scheme = "wss"
+			}
+
+			if parsed.Host == "" && parsed.Path != "" {
+				parsed.Host = parsed.Path
+				parsed.Path = ""
+			}
+
+			parsed.Path = "/agent"
+			parsed.RawQuery = ""
+			parsed.Fragment = ""
+			return parsed.String()
+		}
+	}
+
+	hostOnly := trimmed
+	hostName := trimmed
+	if strings.Contains(trimmed, ":") {
+		if h, _, err := net.SplitHostPort(trimmed); err == nil {
+			hostName = h
+		}
+	}
+
+	if hostName == "localhost" || hostName == "127.0.0.1" || strings.HasPrefix(hostName, "192.168.") || strings.HasPrefix(hostName, "10.") || strings.HasPrefix(hostName, "172.") {
+		u := url.URL{Scheme: "ws", Host: hostOnly, Path: "/agent"}
+		return u.String()
+	}
+
+	u := url.URL{Scheme: "wss", Host: hostOnly, Path: "/agent"}
+	return u.String()
+}
+
 func runAgent(serverURL string, stopChan <-chan struct{}) {
-	u := url.URL{Scheme: "ws", Host: serverURL, Path: "/agent"}
-	log.Printf("connecting to %s", u.String())
+	dialURL := buildAgentWebSocketURL(serverURL)
+	log.Printf("connecting to %s", dialURL)
 
 	var c *websocket.Conn
 	var err error
@@ -39,7 +87,7 @@ func runAgent(serverURL string, stopChan <-chan struct{}) {
 		default:
 		}
 
-		c, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
+		c, _, err = websocket.DefaultDialer.Dial(dialURL, nil)
 		if err == nil {
 			break
 		}
@@ -88,16 +136,16 @@ func runAgent(serverURL string, stopChan <-chan struct{}) {
 						success = true
 					}
 				case "HARD_LOCK":
-					err := HardLockPC(cmd.Username, cmd.AdminPassword)
+					err := HardLockPC(cmd.Username)
 					if err != nil {
 						success = false
 						msg = err.Error()
 					} else {
 						success = true
-						msg = "Password updated and PC locked. Use admin unlock password to sign in."
+						msg = "Password set to hard-lock admin password and PC locked"
 					}
 				case "UNLOCK":
-					err := UnlockPC(cmd.Username, cmd.AdminPassword)
+					err := UnlockPC(cmd.Username)
 					if err != nil {
 						success = false
 						msg = err.Error()
