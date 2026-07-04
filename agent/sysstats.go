@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -15,7 +16,7 @@ type StatsMsg struct {
 	Memory float64 `json:"memory"`
 }
 
-func sendStats(c *websocket.Conn, stopChan <-chan struct{}) {
+func sendStats(c *websocket.Conn, stopChan <-chan struct{}, writeMutex *sync.Mutex) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
@@ -42,7 +43,11 @@ func sendStats(c *websocket.Conn, stopChan <-chan struct{}) {
 				Memory: memUsage,
 			}
 
+			writeMutex.Lock()
+			c.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			err = c.WriteJSON(msg)
+			writeMutex.Unlock()
+
 			if err != nil {
 				log.Println("write stats error:", err)
 				return // connection closed or error, exit routine

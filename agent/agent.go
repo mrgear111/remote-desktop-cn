@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -22,6 +23,22 @@ type CommandResultMsg struct {
 	Command string `json:"command"`
 	Success bool   `json:"success"`
 	Message string `json:"message"`
+}
+
+func isInternetDown() bool {
+	timeout := 2 * time.Second
+	conn, err := net.DialTimeout("tcp", "8.8.8.8:53", timeout)
+	if err != nil {
+		// Could also check 1.1.1.1 if 8.8.8.8 fails just to be sure
+		conn2, err2 := net.DialTimeout("tcp", "1.1.1.1:53", timeout)
+		if err2 != nil {
+			return true
+		}
+		conn2.Close()
+		return false
+	}
+	conn.Close()
+	return false
 }
 
 func buildAgentWebSocketURL(serverAddr string) string {
@@ -71,7 +88,24 @@ func buildAgentWebSocketURL(serverAddr string) string {
 	return u.String()
 }
 
-func runAgent(serverURL string, stopChan <-chan struct{}) {
+func StartAgent(serverURL string, stopChan <-chan struct{}) {
+	for {
+		select {
+		case <-stopChan:
+			log.Println("StartAgent: Received stop signal, shutting down completely.")
+			return
+		default:
+			log.Println("Starting agent session...")
+			runAgentSession(serverURL, stopChan)
+			
+			// If we get here, the connection dropped. Wait before retrying.
+			log.Println("Agent session ended. Reconnecting in 5 seconds...")
+			time.Sleep(5 * time.Second)
+		}
+	}
+}
+
+func runAgentSession(serverURL string, stopChan <-chan struct{}) {
 	dialURL := buildAgentWebSocketURL(serverURL)
 	log.Printf("connecting to %s", dialURL)
 
@@ -102,8 +136,46 @@ func runAgent(serverURL string, stopChan <-chan struct{}) {
 	// Create a channel for WebSocket read errors
 	readErrChan := make(chan error, 1)
 
+	// We need a mutex to prevent concurrent writes to the WebSocket connection
+	var writeMutex sync.Mutex
+
+	pongWait := 10 * time.Second
+	pingPeriod := 5 * time.Second
+	writeWait := 5 * time.Second
+
+	c.SetReadDeadline(time.Now().Add(pongWait))
+	c.SetPongHandler(func(string) error {
+		c.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
+	// Start sending pings
+	go func() {
+		ticker := time.NewTicker(pingPeriod)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stopChan:
+				return
+			case <-ticker.C:
+				writeMutex.Lock()
+				c.SetWriteDeadline(time.Now().Add(writeWait))
+				err := c.WriteMessage(websocket.PingMessage, nil)
+				writeMutex.Unlock()
+				if err != nil {
+					c.Close()
+					return
+				}
+			}
+		}
+	}()
+
+	// Track locked users for auto-unlock on disconnect
+	var lockedUsersMutex sync.Mutex
+	lockedUsers := make(map[string]bool)
+
 	// Start sending stats in the background
-	go sendStats(c, stopChan)
+	go sendStats(c, stopChan, &writeMutex)
 
 	// Command listener loop in background
 	go func() {
@@ -141,8 +213,12 @@ func runAgent(serverURL string, stopChan <-chan struct{}) {
 						success = false
 						msg = err.Error()
 					} else {
+						lockedUsersMutex.Lock()
+						lockedUsers[cmd.Username] = true
+						lockedUsersMutex.Unlock()
+
 						success = true
-						msg = "Password set to hard-lock admin password and PC locked"
+						msg = "Account disabled and PC locked"
 					}
 				case "UNLOCK":
 					err := UnlockPC(cmd.Username)
@@ -150,6 +226,10 @@ func runAgent(serverURL string, stopChan <-chan struct{}) {
 						success = false
 						msg = err.Error()
 					} else {
+						lockedUsersMutex.Lock()
+						delete(lockedUsers, cmd.Username)
+						lockedUsersMutex.Unlock()
+
 						success = true
 						msg = "Account unlocked successfully"
 					}
@@ -166,7 +246,12 @@ func runAgent(serverURL string, stopChan <-chan struct{}) {
 					Message: msg,
 				}
 
-				if err := c.WriteJSON(res); err != nil {
+				writeMutex.Lock()
+				c.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				err := c.WriteJSON(res)
+				writeMutex.Unlock()
+				
+				if err != nil {
 					log.Println("write result error:", err)
 				}
 			}
@@ -182,4 +267,18 @@ func runAgent(serverURL string, stopChan <-chan struct{}) {
 	case err := <-readErrChan:
 		log.Println("WebSocket read error:", err)
 	}
+
+	// Auto-unlock instantly if agent disconnects AND internet is down
+	lockedUsersMutex.Lock()
+	if len(lockedUsers) > 0 {
+		if isInternetDown() {
+			for user := range lockedUsers {
+				log.Printf("Internet is down. Auto-unlocking user: %s", user)
+				UnlockPC(user)
+			}
+		} else {
+			log.Println("Agent disconnected, but internet is up. Keeping PC locked.")
+		}
+	}
+	lockedUsersMutex.Unlock()
 }

@@ -17,6 +17,11 @@ let webClients = new Set();
 let pcAgents = new Set();
 
 wss.on('connection', (ws, req) => {
+    ws.isAlive = true;
+    ws.on('pong', () => {
+        ws.isAlive = true;
+    });
+
     // Basic routing based on URL path
     const isAgent = req.url === '/agent';
     
@@ -67,6 +72,23 @@ wss.on('connection', (ws, req) => {
             console.error('Failed to parse message:', e);
         }
     });
+});
+
+// Heartbeat interval to check for dead connections
+const heartbeatInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+        if (ws.isAlive === false) {
+            console.log('Terminating dead connection...');
+            return ws.terminate();
+        }
+
+        ws.isAlive = false;
+        ws.ping();
+    });
+}, 5000);
+
+wss.on('close', () => {
+    clearInterval(heartbeatInterval);
 });
 
 function broadcastToWebClients(data) {

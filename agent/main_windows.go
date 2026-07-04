@@ -23,7 +23,7 @@ func (m *agentService) Execute(args []string, r <-chan svc.ChangeRequest, change
 	stopChan := make(chan struct{})
 
 	// Start agent loop in a goroutine
-	go runAgent(*serverURL, stopChan)
+	go StartAgent(*serverURL, stopChan)
 
 	changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepted}
 
@@ -60,7 +60,7 @@ func main() {
 
 		stopChan := make(chan struct{})
 		// We could catch SIGINT here to close stopChan, but for testing just let it run
-		runAgent(*serverURL, stopChan)
+		StartAgent(*serverURL, stopChan)
 	} else {
 		// Run as Windows Service
 		log.Println("Running as Windows Service.")
