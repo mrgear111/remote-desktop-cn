@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remote PC Manager</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Remote PC Manager</h1>
+            <div class="status-indicator">
+                <span id="status-dot" class="dot offline"></span>
+                <span id="status-text">PC Offline</span>
+            </div>
+        </header>
+
+        <main>
+            <section class="stats-card">
+                <h2>System Statistics</h2>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <h3>CPU Usage</h3>
+                        <p id="cpu-val">--%</p>
+                    </div>
+                    <div class="stat-box">
+                        <h3>Memory Usage</h3>
+                        <p id="mem-val">--%</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="actions-card">
+                <h2>Actions</h2>
+                
+                <div class="action-group">
+                    <label for="target-user">Target Username:</label>
+                    <input type="text" id="target-user" value="Admin" placeholder="Windows Username">
+                </div>
+
+                <div class="action-group">
+                    <label for="admin-password">Admin Unlock Password:</label>
+                    <input type="password" id="admin-password" placeholder="Password used to unlock after hard lock">
+                </div>
+
+                <div class="action-buttons">
+                    <button id="btn-lock" class="btn-primary" disabled>Soft Lock PC</button>
+                    <button id="btn-hard-lock" class="btn-danger" disabled>HARD LOCK</button>
+                    <button id="btn-unlock" class="btn-success" disabled>Unlock Account</button>
+                </div>
+                <div id="action-result" class="result-msg"></div>
+            </section>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
